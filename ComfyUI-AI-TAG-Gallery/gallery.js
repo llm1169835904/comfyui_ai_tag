@@ -9,6 +9,21 @@ console.log("[Gallery] modular JS loaded");
 
 const GALLERY_PAGE_SIZE = 60;
 const GALLERY_TITLE_BLACKLIST_KEY = "ComfyUI.Gallery.titleBlacklist.v1";
+const GALLERY_INTERNAL_WIDGET_NAMES = new Set([
+    "user_id",
+    "image_id",
+    "ai_type",
+    "image_path",
+    "ai_json",
+    "draw_enabled",
+    "search_query",
+    "sort_mode",
+    "time_range"
+]);
+const GALLERY_INTERNAL_SLOT_NAMES = new Set([
+    ...GALLERY_INTERNAL_WIDGET_NAMES,
+    "gallery_widget"
+]);
 
 function normalizeBlacklistTitle(title) {
     return String(title || "").trim().replace(/\s+/g, " ");
@@ -139,6 +154,22 @@ function areGalleryQueriesEqual(a, b) {
         && a.timeRange === b.timeRange;
 }
 
+function splitSearchTerms(searchQuery = "") {
+    return String(searchQuery || "").match(/"[^"]+"|\S+/g) || [];
+}
+
+function buildSearchQueryFromTerms(terms = []) {
+    return terms.map((term) => String(term || "").trim()).filter(Boolean).join(" ");
+}
+
+function getSearchTermCompareKey(term) {
+    return String(term || "").trim().replace(/^"|"$/g, "").toLocaleLowerCase();
+}
+
+function getSearchTermLabel(term) {
+    return String(term || "").trim().replace(/^"|"$/g, "");
+}
+
 app.registerExtension({
     name: "ComfyUI.Gallery",
 
@@ -151,20 +182,8 @@ app.registerExtension({
         nodeType.prototype.hideInternalWidgets = function () {
             if (!this.widgets) return;
 
-            const hiddenNames = new Set([
-                "user_id",
-                "image_id",
-                "ai_type",
-                "image_path",
-                "ai_json",
-                "draw_enabled",
-                "search_query",
-                "sort_mode",
-                "time_range"
-            ]);
-
             for (const w of this.widgets) {
-                if (hiddenNames.has(String(w.name || "").trim())) {
+                if (GALLERY_INTERNAL_WIDGET_NAMES.has(String(w.name || "").trim())) {
                     w.computeSize = () => [0, 0];
                     w.type = "hidden";
                     w.hidden = true;
@@ -173,6 +192,25 @@ app.registerExtension({
             }
 
             this.setDirtyCanvas?.(true, true);
+        };
+
+        nodeType.prototype.hideInternalInputs = function () {
+            if (!Array.isArray(this.inputs) || !this.inputs.length) return;
+
+            let changed = false;
+            for (let i = this.inputs.length - 1; i >= 0; i--) {
+                const inputName = String(this.inputs[i]?.name || "").trim();
+                if (GALLERY_INTERNAL_SLOT_NAMES.has(inputName) || !inputName) {
+                    if (typeof this.removeInput === "function") {
+                        this.removeInput(i);
+                    } else {
+                        this.inputs.splice(i, 1);
+                    }
+                    changed = true;
+                }
+            }
+
+            if (changed) this.setDirtyCanvas?.(true, true);
         };
 
         nodeType.prototype.renderPage = renderPage;
@@ -481,6 +519,140 @@ app.registerExtension({
                     font-size: 12px;
                     font-weight: 700;
                 }
+
+                .gallery-search-back {
+                    width: 26px;
+                    height: 26px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex: 0 0 auto;
+                    border-radius: 4px;
+                    border: 1px solid #4a5568;
+                    background: #3b4252;
+                    color: #dbe4ff;
+                    cursor: pointer;
+                    font-size: 15px;
+                    line-height: 1;
+                }
+
+                .gallery-search-back:disabled {
+                    opacity: 0.38;
+                    cursor: default;
+                }
+
+                .gallery-search-box {
+                    position: relative;
+                    flex: 1;
+                    min-width: 170px;
+                    min-height: 26px;
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    padding: 2px 24px 2px 5px;
+                    background: #313741;
+                    color: white;
+                    border: 1px solid #4a5568;
+                    border-radius: 3px;
+                    box-sizing: border-box;
+                    overflow: hidden;
+                }
+
+                .gallery-search-terms {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    flex: 0 1 auto;
+                    flex-wrap: nowrap;
+                    min-width: 0;
+                    max-width: 100%;
+                    overflow-x: auto;
+                    overflow-y: hidden;
+                    white-space: nowrap;
+                    scrollbar-width: none;
+                    -ms-overflow-style: none;
+                }
+
+                .gallery-search-terms::-webkit-scrollbar {
+                    width: 0;
+                    height: 0;
+                    display: none;
+                }
+
+                .gallery-search-scrollbar {
+                    position: absolute;
+                    left: 6px;
+                    right: 28px;
+                    bottom: 2px;
+                    height: 3px;
+                    overflow: hidden;
+                    border-radius: 999px;
+                    background: rgba(160, 174, 210, 0.16);
+                    opacity: 0;
+                    pointer-events: none;
+                    transition: opacity 140ms ease;
+                }
+
+                .gallery-search-scrollbar-thumb {
+                    height: 100%;
+                    width: 0;
+                    border-radius: inherit;
+                    background: rgba(190, 203, 235, 0.78);
+                    box-shadow: 0 0 4px rgba(190, 203, 235, 0.28);
+                    transform: translateX(0);
+                }
+
+                .gallery-search-box.is-scrolling .gallery-search-scrollbar {
+                    opacity: 1;
+                }
+
+                .gallery-search-term {
+                    display: inline-flex;
+                    align-items: center;
+                    flex: 0 0 auto;
+                    max-width: 160px;
+                    min-height: 20px;
+                    border: 1px solid rgba(125, 146, 190, 0.62);
+                    border-radius: 4px;
+                    background: rgba(82, 92, 121, 0.72);
+                    color: #eef3ff;
+                    font-size: 11px;
+                    line-height: 1.2;
+                    overflow: hidden;
+                }
+
+                .gallery-search-term-label {
+                    min-width: 0;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    padding: 2px 5px 2px 7px;
+                }
+
+                .gallery-search-term-remove {
+                    width: 20px;
+                    align-self: stretch;
+                    border: 0;
+                    border-left: 1px solid rgba(255, 255, 255, 0.12);
+                    background: rgba(0, 0, 0, 0.1);
+                    color: #d9e2ff;
+                    cursor: pointer;
+                    font-size: 12px;
+                    line-height: 1;
+                    padding: 0;
+                }
+
+                .gallery-search-input {
+                    flex: 1;
+                    min-width: 70px;
+                    height: 20px;
+                    padding: 0 2px;
+                    background: transparent;
+                    color: white;
+                    border: 0;
+                    outline: 0;
+                    font-size: 11px;
+                }
             `;
             document.head.appendChild(style);
         };
@@ -527,12 +699,15 @@ app.registerExtension({
             this._lastLoadedGalleryQuery = null;
             this._titleBlacklist = readTitleBlacklist();
             this.galleryDisplayPage = 1;
+            this._searchQueryValue = "";
+            this._gallerySearchHistory = [];
 
             if (!this.properties) this.properties = {};
 
             this.ensureGalleryStyles();
             this.createGalleryUI();
             this.hideInternalWidgets?.();
+            this.hideInternalInputs?.();
 
             fetchSiteConfig().then((cfg) => {
                 if (cfg) {
@@ -594,7 +769,7 @@ app.registerExtension({
 
         nodeType.prototype.getCurrentGalleryQuery = function () {
             return normalizeGalleryQuery({
-                searchQuery: this.searchInput?.value || "",
+                searchQuery: this.getSearchQueryValue?.() || "",
                 sort: this.sortSelect?.value || "new",
                 timeRange: this.timeSelect?.value || "all"
             });
@@ -602,7 +777,236 @@ app.registerExtension({
 
         nodeType.prototype.updateSearchClearButton = function () {
             if (!this.searchClearButton || !this.searchInput) return;
-            this.searchClearButton.style.display = this.searchInput.value.trim() ? "inline" : "none";
+            const hasSearch = Boolean((this.getSearchQueryValue?.() || "").trim() || this.searchInput.value.trim());
+            this.searchClearButton.style.display = hasSearch ? "inline" : "none";
+        };
+
+        nodeType.prototype.getSearchQueryValue = function () {
+            return this._searchQueryValue ?? this.searchInput?.value ?? "";
+        };
+
+        nodeType.prototype.createGalleryHistorySnapshot = function () {
+            const query = normalizeGalleryQuery(this._lastLoadedGalleryQuery || this.getCurrentGalleryQuery?.() || {});
+            const scrollTop = this._viewMode === "list"
+                ? (this.galleryGrid?.scrollTop || this._savedListScrollTop || this._savedScrollTop || 0)
+                : (this._savedListScrollTop || this._savedScrollTop || 0);
+
+            return {
+                query,
+                page: this.galleryPage || 1,
+                displayPage: this.galleryDisplayPage || this.galleryPage || 1,
+                totalPages: this.galleryTotalPages || 1,
+                items: Array.isArray(this.galleryAllItems) ? [...this.galleryAllItems] : [],
+                scrollTop,
+                hasMore: this._hasMoreGalleryItems !== false
+            };
+        };
+
+        nodeType.prototype.pushGallerySearchHistory = function () {
+            const snapshot = this.createGalleryHistorySnapshot?.();
+            if (!snapshot) return;
+
+            if (!Array.isArray(this._gallerySearchHistory)) this._gallerySearchHistory = [];
+            const last = this._gallerySearchHistory[this._gallerySearchHistory.length - 1];
+            if (last
+                && areGalleryQueriesEqual(last.query, snapshot.query)
+                && last.page === snapshot.page
+                && last.scrollTop === snapshot.scrollTop
+            ) {
+                return;
+            }
+
+            this._gallerySearchHistory.push(snapshot);
+            if (this._gallerySearchHistory.length > 20) this._gallerySearchHistory.shift();
+            this.setSessionCache?.({ searchHistory: this._gallerySearchHistory });
+            this.syncSearchHistoryButton?.();
+        };
+
+        nodeType.prototype.syncSearchHistoryButton = function () {
+            if (!this.searchBackButton) return;
+            const hasHistory = Array.isArray(this._gallerySearchHistory) && this._gallerySearchHistory.length > 0;
+            this.searchBackButton.disabled = !hasHistory;
+            this.searchBackButton.title = hasHistory ? "返回上一次搜索结果" : "没有可返回的搜索结果";
+        };
+
+        nodeType.prototype.renderSearchTerms = function () {
+            if (!this.searchTermsWrap || !this.searchInput) return;
+            const terms = splitSearchTerms(this.getSearchQueryValue?.() || "");
+            this.searchTermsWrap.replaceChildren();
+
+            terms.forEach((term, index) => {
+                const chip = document.createElement("span");
+                chip.className = "gallery-search-term";
+                chip.title = term;
+
+                const label = document.createElement("span");
+                label.className = "gallery-search-term-label";
+                label.textContent = getSearchTermLabel(term);
+
+                const removeButton = document.createElement("button");
+                removeButton.type = "button";
+                removeButton.className = "gallery-search-term-remove";
+                removeButton.textContent = "X";
+                removeButton.title = "删除这个搜索词";
+                removeButton.onclick = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.removeSearchTermAtIndex?.(index);
+                };
+
+                chip.append(label, removeButton);
+                this.searchTermsWrap.appendChild(chip);
+            });
+
+            this.searchInput.placeholder = terms.length
+                ? "继续输入"
+                : "搜索:作品id/作者id/简介/tags(日文)/投稿日期/AI类型/模型";
+            this.updateSearchClearButton?.();
+            this.updateSearchOverflowIndicator?.();
+        };
+
+        nodeType.prototype.updateSearchOverflowIndicator = function (options = {}) {
+            const termsWrap = this.searchTermsWrap;
+            const track = this.searchScrollTrack;
+            const thumb = this.searchScrollThumb;
+            const box = this.searchBox;
+            if (!termsWrap || !track || !thumb || !box) return;
+
+            const scrollWidth = termsWrap.scrollWidth;
+            const clientWidth = termsWrap.clientWidth;
+            const hasOverflow = scrollWidth > clientWidth + 1;
+            track.style.display = hasOverflow ? "block" : "none";
+            if (!hasOverflow) {
+                box.classList.remove("is-scrolling");
+                return;
+            }
+
+            const trackWidth = track.clientWidth || clientWidth;
+            const thumbWidth = Math.max(28, Math.round((clientWidth / scrollWidth) * trackWidth));
+            const maxScrollLeft = scrollWidth - clientWidth;
+            const maxThumbLeft = Math.max(0, trackWidth - thumbWidth);
+            const thumbLeft = maxScrollLeft > 0
+                ? Math.round((termsWrap.scrollLeft / maxScrollLeft) * maxThumbLeft)
+                : 0;
+
+            thumb.style.width = `${thumbWidth}px`;
+            thumb.style.transform = `translateX(${thumbLeft}px)`;
+
+            if (options.show) {
+                box.classList.add("is-scrolling");
+                clearTimeout(this._searchScrollHideTimer);
+                this._searchScrollHideTimer = setTimeout(() => {
+                    box.classList.remove("is-scrolling");
+                }, 650);
+            }
+        };
+
+        nodeType.prototype.scrollSearchTermsToEnd = function () {
+            const termsWrap = this.searchTermsWrap;
+            if (!termsWrap) return;
+            requestAnimationFrame(() => {
+                termsWrap.scrollLeft = termsWrap.scrollWidth;
+                this.updateSearchOverflowIndicator?.({ show: true });
+            });
+        };
+
+        nodeType.prototype.setSearchQueryValue = function (searchQuery, options = {}) {
+            if (!this.searchInput) return;
+            this._searchQueryValue = String(searchQuery || "").trim();
+            this.searchInput.value = options.keepInput ? this._searchQueryValue : "";
+            this.renderSearchTerms?.();
+            if (options.scrollToEnd) this.scrollSearchTermsToEnd?.();
+            this.syncDrawInputs?.();
+            if (options.save !== false) this.saveGalleryState?.();
+        };
+
+        nodeType.prototype.applySearchQuery = function (searchQuery, options = {}) {
+            const nextQuery = String(searchQuery || "").trim();
+            const previousQuery = normalizeGalleryQuery(this._lastLoadedGalleryQuery || this.getCurrentGalleryQuery?.() || {});
+            const nextNormalized = normalizeGalleryQuery({
+                searchQuery: nextQuery,
+                sort: this.sortSelect?.value || previousQuery?.sort || "new",
+                timeRange: this.timeSelect?.value || previousQuery?.timeRange || "all"
+            });
+
+            if (options.pushHistory !== false
+                && previousQuery
+                && !areGalleryQueriesEqual(previousQuery, nextNormalized)) {
+                this.pushGallerySearchHistory?.();
+            }
+
+            this.hideHoverPreviews?.();
+            this.setSearchQueryValue?.(nextQuery, { scrollToEnd: options.scrollToEnd });
+
+            if (this.sortSelect && this.sortSelect.value !== "new" && nextQuery) {
+                this.sortSelect.value = "new";
+                this.updateTimeSelect?.();
+            }
+
+            if (options.search !== false) this.loadGallery(1);
+        };
+
+        nodeType.prototype.removeSearchTermAtIndex = function (index) {
+            const terms = splitSearchTerms(this.getSearchQueryValue?.() || "");
+            if (index < 0 || index >= terms.length) return;
+            terms.splice(index, 1);
+            this.applySearchQuery?.(buildSearchQueryFromTerms(terms), { pushHistory: true, search: true });
+        };
+
+        nodeType.prototype.restoreGallerySearchHistory = function () {
+            if (!Array.isArray(this._gallerySearchHistory)) {
+                const cache = this.getSessionCache?.();
+                this._gallerySearchHistory = Array.isArray(cache?.searchHistory) ? cache.searchHistory : [];
+            }
+            this.syncSearchHistoryButton?.();
+        };
+
+        nodeType.prototype.goBackSearchHistory = function () {
+            if (!Array.isArray(this._gallerySearchHistory) || !this._gallerySearchHistory.length) return;
+            const snapshot = this._gallerySearchHistory.pop();
+            this.setSessionCache?.({ searchHistory: this._gallerySearchHistory });
+            this.syncSearchHistoryButton?.();
+            if (!snapshot) return;
+
+            this.hideHoverPreviews?.();
+            this.clearListDomCache?.();
+            if (this.sortSelect) this.sortSelect.value = snapshot.query?.sort || "new";
+            this.updateTimeSelect?.();
+            if (this.timeSelect) this.timeSelect.value = snapshot.query?.timeRange || "all";
+            this.setSearchQueryValue?.(snapshot.query?.searchQuery || "", { save: false });
+            this._lastLoadedGalleryQuery = normalizeGalleryQuery(snapshot.query || {});
+
+            this.galleryAllItems = Array.isArray(snapshot.items) ? snapshot.items : [];
+            this.galleryPage = snapshot.page || 1;
+            this.galleryDisplayPage = snapshot.displayPage || snapshot.page || 1;
+            this.galleryTotalPages = snapshot.totalPages || 1;
+            this._hasMoreGalleryItems = snapshot.hasMore !== false;
+            this._viewMode = "list";
+            this._detailWorkId = null;
+            this._detailRaw = null;
+            this._detailImages = [];
+            this._selectedDetailImage = null;
+            this._savedListScrollTop = snapshot.scrollTop || 0;
+            this._savedScrollTop = snapshot.scrollTop || 0;
+
+            if (this.listControls) this.listControls.style.display = "flex";
+            if (this.detailControls) this.detailControls.style.display = "none";
+            this.syncDrawInputs?.();
+            this.syncPageControls?.();
+            this.setSessionCache?.({
+                items: this.galleryAllItems,
+                detailRaw: null,
+                detailImages: []
+            });
+
+            if (this.galleryAllItems.length) {
+                this.renderPage(false, { animate: false });
+                this.restoreGalleryScroll?.("list", snapshot.scrollTop || 0);
+                this.recoverStaleListImages?.();
+                this.saveGalleryState?.();
+            } else {
+                this.loadGallery(snapshot.page || 1);
+            }
         };
 
         nodeType.prototype.syncPageControls = function () {
@@ -660,26 +1064,19 @@ app.registerExtension({
             if (!term || !this.searchInput) return;
 
             this.hideHoverPreviews?.();
-            const current = this.searchInput.value.trim();
-            const termKey = term.toLocaleLowerCase();
-            const hasTerm = current
-                .split(/\s+/)
-                .filter(Boolean)
-                .some((part) => part.toLocaleLowerCase() === termKey);
+            const current = this.getSearchQueryValue?.().trim() || "";
+            const termKey = getSearchTermCompareKey(term);
+            const hasTerm = splitSearchTerms(current)
+                .some((part) => getSearchTermCompareKey(part) === termKey);
 
-            this.searchInput.value = current
+            const nextQuery = current
                 ? (hasTerm ? current : `${current} ${term}`)
                 : term;
-            this.updateSearchClearButton?.();
-
-            if (this.sortSelect && this.sortSelect.value !== "new") {
-                this.sortSelect.value = "new";
-                this.updateTimeSelect?.();
-            }
-
-            this.syncDrawInputs?.();
-            this.saveGalleryState?.();
-            if (options.search !== false) this.loadGallery(1);
+            this.applySearchQuery?.(nextQuery, {
+                pushHistory: options.pushHistory !== false,
+                search: options.search !== false,
+                scrollToEnd: true
+            });
         };
 
         nodeType.prototype.getTitleBlacklist = function () {
@@ -1219,32 +1616,71 @@ app.registerExtension({
             searchRow.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;';
 
             const searchInputWrapper = document.createElement('div');
-            searchInputWrapper.style.cssText = 'position:relative;flex:1;min-width:100px;display:flex;align-items:center;';
+            searchInputWrapper.style.cssText = 'display:flex;align-items:center;gap:4px;flex:1;min-width:170px;';
+
+            this.searchBackButton = document.createElement('button');
+            this.searchBackButton.type = 'button';
+            this.searchBackButton.className = 'gallery-search-back';
+            this.searchBackButton.textContent = '<';
+            this.searchBackButton.onclick = () => this.goBackSearchHistory?.();
+
+            const searchBox = document.createElement('div');
+            searchBox.className = 'gallery-search-box';
+            this.searchBox = searchBox;
+            searchBox.onclick = () => this.searchInput?.focus();
+
+            this.searchTermsWrap = document.createElement('div');
+            this.searchTermsWrap.className = 'gallery-search-terms';
+            this.searchTermsWrap.addEventListener('scroll', () => {
+                this.updateSearchOverflowIndicator?.({ show: true });
+            });
+            searchBox.addEventListener('wheel', (e) => {
+                const termsWrap = this.searchTermsWrap;
+                if (!termsWrap || termsWrap.scrollWidth <= termsWrap.clientWidth) return;
+                const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+                if (!delta) return;
+                termsWrap.scrollLeft += delta;
+                this.updateSearchOverflowIndicator?.({ show: true });
+                e.preventDefault();
+            }, { passive: false });
+
+            this.searchScrollTrack = document.createElement('div');
+            this.searchScrollTrack.className = 'gallery-search-scrollbar';
+            this.searchScrollThumb = document.createElement('div');
+            this.searchScrollThumb.className = 'gallery-search-scrollbar-thumb';
+            this.searchScrollTrack.appendChild(this.searchScrollThumb);
 
             this.searchInput = document.createElement('input');
             this.searchInput.type = 'text';
             this.searchInput.placeholder = '搜索:作品id/作者id/简介/tags(日文)/投稿日期/AI类型/模型(支持 -排除 与 OR 双引号精准)';
-            this.searchInput.style.cssText = 'flex:1;width:100%;padding:4px 24px 4px 8px;background:#313741;color:white;border:1px solid #4a5568;border-radius:3px;font-size:11px;height:26px;';
-            this.searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.loadGallery(1); });
+            this.searchInput.className = 'gallery-search-input';
+            this.searchInput.addEventListener('keydown', (e) => {
+                if (e.isComposing) return;
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const typedTerm = this.searchInput.value.trim();
+                    if (typedTerm) {
+                        this.addSearchTerm?.(typedTerm, { pushHistory: true, search: true });
+                    } else {
+                        this.applySearchQuery(this.getSearchQueryValue?.() || "");
+                    }
+                }
+            });
             this.searchInput.addEventListener('input', () => {
                 this.updateSearchClearButton?.();
-                this.syncDrawInputs?.();
-                this.saveGalleryState?.();
             });
 
             const clearBtn = document.createElement('span');
             clearBtn.textContent = '✕';
             clearBtn.style.cssText = 'position:absolute;right:8px;color:#888;cursor:pointer;font-size:10px;display:none;';
             clearBtn.onclick = () => {
-                this.searchInput.value = '';
-                this.updateSearchClearButton?.();
-                this.syncDrawInputs?.();
-                this.saveGalleryState?.();
-                this.loadGallery(1);
+                this.applySearchQuery?.("", { pushHistory: true, search: true });
             };
             this.searchClearButton = clearBtn;
 
-            searchInputWrapper.append(this.searchInput, clearBtn);
+            searchBox.append(this.searchTermsWrap, this.searchInput, clearBtn, this.searchScrollTrack);
+            searchInputWrapper.append(this.searchBackButton, searchBox);
+            this.syncSearchHistoryButton?.();
 
             this.sortSelect = document.createElement('select');
             this.sortSelect.style.cssText = 'padding:4px 6px;background:#3b4252;color:white;border:1px solid #4a5568;border-radius:3px;font-size:11px;height:26px;';
@@ -1509,6 +1945,7 @@ app.registerExtension({
 
             if (!this.customUI) this.createGalleryUI();
             this.hideInternalWidgets?.();
+            this.hideInternalInputs?.();
             this.loadTitleBlacklistFromDisk?.().then(() => {
                 if (this._viewMode === "list" && this.galleryAllItems?.length) {
                     this.galleryAllItems = this.filterBlacklistedItems(this.galleryAllItems);

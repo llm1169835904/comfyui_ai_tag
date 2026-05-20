@@ -28,7 +28,7 @@ export function installStateMethods(nodeType) {
             viewMode: this._viewMode || 'list',
             detailWorkId: this._detailWorkId || null,
             selectedDetailImagePath: this._selectedDetailImage?.image_path || null,
-            searchQuery: this.searchInput?.value || '',
+            searchQuery: this.getSearchQueryValue?.() || this.searchInput?.value || '',
             sort: this.sortSelect?.value || 'new',
             timeRange: this.timeSelect?.value || 'all',
             drawEnabled: !!this.drawToggleInput?.checked,
@@ -42,7 +42,8 @@ export function installStateMethods(nodeType) {
         this.setSessionCache({
             items: this.galleryAllItems || [],
             detailRaw: this._detailRaw || null,
-            detailImages: this._detailImages || []
+            detailImages: this._detailImages || [],
+            searchHistory: this._gallerySearchHistory || []
         });
     };
 
@@ -63,8 +64,12 @@ export function installStateMethods(nodeType) {
             this._savedDetailScrollTop = state.detailScrollTop ?? (state.viewMode === 'detail' ? (state.scrollTop || 0) : 0);
 
             if (this.searchInput) {
-                this.searchInput.value = state.searchQuery || '';
-                this.updateSearchClearButton?.();
+                if (this.setSearchQueryValue) {
+                    this.setSearchQueryValue(state.searchQuery || '', { save: false });
+                } else {
+                    this.searchInput.value = state.searchQuery || '';
+                    this.updateSearchClearButton?.();
+                }
             }
             if (this.sortSelect) this.sortSelect.value = state.sort || 'new';
 
@@ -80,6 +85,7 @@ export function installStateMethods(nodeType) {
             this.galleryAllItems = this.filterBlacklistedItems?.(cache.items || []) || cache.items || [];
             this._detailRaw = cache.detailRaw || null;
             this._detailImages = cache.detailImages || [];
+            this._gallerySearchHistory = Array.isArray(cache.searchHistory) ? cache.searchHistory : [];
         }
 
         this._selectedDetailImage = null;
@@ -90,6 +96,8 @@ export function installStateMethods(nodeType) {
         }
 
         this.syncDrawInputs?.();
+        this.renderSearchTerms?.();
+        this.syncSearchHistoryButton?.();
         this.syncPageControls?.();
 
         return true;
