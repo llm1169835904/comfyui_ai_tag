@@ -1,5 +1,7 @@
 
-![Uploading Snipaste_2026-05-20_15-15-51.png…]()
+<img width="1769" height="861" alt="Snipaste_2026-05-20_15-15-51" src="https://github.com/user-attachments/assets/ef994921-4c45-42f0-9d36-d04c1c87bf58" />
+
+
 
 
 画廊输出的是图片元数据 可以通过ai进行提取提示词等信息 如果有的话
