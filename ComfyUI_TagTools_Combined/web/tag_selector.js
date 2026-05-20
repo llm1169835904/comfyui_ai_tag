@@ -383,14 +383,14 @@ function createTagSelector(node) {
     });
     commit();
     renderOutput();
-    renderTags();
+    renderTags({ preserveScroll: true });
   }
 
   function removeTag(tag) {
     selected = selected.filter((item) => item.tag !== tag);
     commit();
     renderOutput();
-    renderTags();
+    renderTags({ preserveScroll: true });
   }
 
   function clearSelectedTags() {
@@ -407,7 +407,7 @@ function createTagSelector(node) {
     item.enabled = !item.enabled;
     commit();
     renderOutput();
-    renderTags();
+    renderTags({ preserveScroll: true });
   }
 
   function changeWeight(tag, delta) {
@@ -417,7 +417,7 @@ function createTagSelector(node) {
     item.weight = Math.max(-5, Math.min(5, next));
     commit();
     renderOutput();
-    renderTags();
+    renderTags({ preserveScroll: true });
   }
 
   function renderOutput() {
@@ -570,7 +570,8 @@ function createTagSelector(node) {
     treePanel.append(fragment);
   }
 
-  function renderTags() {
+  function renderTags({ preserveScroll = false } = {}) {
+    const previousScrollTop = preserveScroll ? tagsPanel.scrollTop : 0;
     tagsPanel.replaceChildren();
 
     const selectedCount = selected.filter((item) => item.enabled !== false).length;
@@ -613,6 +614,11 @@ function createTagSelector(node) {
         }
       });
       tagsPanel.append(row);
+    }
+
+    if (preserveScroll) {
+      const maxScrollTop = Math.max(0, tagsPanel.scrollHeight - tagsPanel.clientHeight);
+      tagsPanel.scrollTop = Math.min(previousScrollTop, maxScrollTop);
     }
   }
 
