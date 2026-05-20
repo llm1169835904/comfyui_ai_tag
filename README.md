@@ -1,5 +1,6 @@
 
-<img width="1453" height="1194" alt="image" src="https://github.com/user-attachments/assets/d3bdf06c-6aaf-4c3f-9ad0-44b9afd54f09" />
+![Uploading Snipaste_2026-05-20_15-15-51.png…]()
+
 
 画廊输出的是图片元数据 可以通过ai进行提取提示词等信息 如果有的话
 comfyui标出的图 可以直接拖出来就有工作流 但是工作流五花八门 能看到啥就看运气了
